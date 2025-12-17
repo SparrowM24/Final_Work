@@ -230,8 +230,8 @@ def login_required(f):
 @app.context_processor
 def inject_user_info():
     student_info = {
-        'fio': 'Иванов Иван Иванович',
-        'group': 'ПИ-123'
+        'fio': 'Дьячкова Алиса Дмитриевна',
+        'group': 'ФБИ-32'
     }
     
     user_info = {}

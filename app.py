@@ -1,10 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from models.models import db, User, Product, Order, OrderItem
 from config import Config
-from werkzeug.security import generate_password_hash, check_password_hash
 import re
 from functools import wraps
-import math
 import logging
 
 logging.basicConfig(level=logging.DEBUG)

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Заказы - Склад бытовой техники{% endblock %}
+
+{% block content %}
+<div class="orders-container">
+    <h2>Список заказов</h2>
+    
+    {% if orders %}
+    <div class="orders-list">
+        {% for order in orders %}
+        <div class="order-card {{ 'paid' if order.status == 'оплачен' else 'unpaid' }}">
+            <div class="order-header">
+                <h3>Заказ №{{ order.id }}</h3>
+                <span class="order-status status-{{ order.status }}">
+                    {{ order.status }}
+                </span>
+            </div>
+            
+            <div class="order-info">
+                <p><strong>Дата создания:</strong> {{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</p>
+                <p><strong>Товаров в заказе:</strong> {{ order.items|length }}</p>
+                
+                <div class="order-items">
+                    <h4>Состав заказа:</h4>
+                    <ul>
+                        {% for item in order.items %}
+                        <li>{{ item.product.name }} (арт. {{ item.product.article }}) - {{ item.quantity }} шт.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            
+            {% if order.status == 'неоплачен' %}
+            <div class="order-actions">
+                <form method="POST" action="{{ url_for('mark_paid', order_id=order.id) }}" 
+                      onsubmit="return confirm('Отметить заказ №{{ order.id }} как оплаченный? Количество товаров на складе будет уменьшено.');">
+                    <button type="submit" class="btn btn-success">Отметить как оплаченный</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Пагинация -->
+    {% if pagination.pages > 1 %}
+    <div class="pagination">
+        {% if pagination.has_prev %}
+            <a href="{{ url_for('view_orders', page=pagination.prev_num) }}" class="btn">Назад</a>
+        {% endif %}
+        
+        <span class="current-page">Страница {{ pagination.page }} из {{ pagination.pages }}</span>
+        
+        {% if pagination.has_next %}
+            <a href="{{ url_for('view_orders', page=pagination.next_num) }}" class="btn">Вперед</a>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    {% else %}
+    <div class="no-orders">
+        <p>Заказов нет</p>
+        <a href="{{ url_for('index') }}" class="btn">Вернуться к товарам</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

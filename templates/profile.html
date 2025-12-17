@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Профиль - Склад бытовой техники{% endblock %}
+
+{% block content %}
+<div class="profile-container">
+    <h2>Профиль пользователя</h2>
+    
+    <div class="profile-info">
+        <div class="info-card">
+            <h3>Основная информация</h3>
+            <p><strong>Логин:</strong> {{ user.username }}</p>
+            <p><strong>Роль:</strong> 
+                {% if user.role == 'admin' %}
+                    Администратор
+                {% else %}
+                    Кладовщик
+                {% endif %}
+            </p>
+            <p><strong>Дата регистрации:</strong> Не реализовано в текущей версии</p>
+        </div>
+        
+        <div class="info-card">
+            <h3>Статистика</h3>
+            <p><strong>Всего заказов в системе:</strong> {{ total_orders }}</p>
+            <p><strong>Неоплаченных заказов:</strong> {{ pending_orders }}</p>
+            <p><strong>Оплаченных заказов:</strong> {{ completed_orders }}</p>
+        </div>
+    </div>
+    
+    <div class="profile-actions">
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">На главную</a>
+        
+        {% if user.role == 'admin' %}
+        <a href="{{ url_for('admin_users') }}" class="btn btn-primary">Управление пользователями</a>
+        {% endif %}
+        
+        <a href="{{ url_for('delete_account') }}" class="btn btn-danger">Удалить аккаунт</a>
+    </div>
+</div>
+{% endblock %}

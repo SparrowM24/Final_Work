@@ -1,0 +1,21 @@
+<nav class="navbar">
+    <div class="container">
+        <ul class="nav-menu">
+            {% if user_info %}
+                <li><a href="{{ url_for('index') }}">Главная</a></li>
+                <li><a href="{{ url_for('add_product') }}">Добавить товар</a></li>
+                <li><a href="{{ url_for('view_cart') }}">Корзина 
+                    {% if session.get('cart') %}
+                        <span class="badge" id="cart-counter">{{ session.cart.values()|sum }}</span>
+                    {% endif %}
+                </a></li>
+                <li><a href="{{ url_for('view_orders') }}">Заказы</a></li>
+                <li><a href="{{ url_for('profile') }}">Профиль ({{ user_info.username }})</a></li>
+                <li><a href="{{ url_for('logout') }}">Выход</a></li>
+            {% else %}
+                <li><a href="{{ url_for('login') }}">Вход</a></li>
+                <li><a href="{{ url_for('register') }}">Регистрация</a></li>
+            {% endif %}
+        </ul>
+    </div>
+</nav>

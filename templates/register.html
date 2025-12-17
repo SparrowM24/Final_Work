@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Регистрация - Склад бытовой техники{% endblock %}
+
+{% block content %}
+<div class="auth-form">
+    <h2>Регистрация нового кладовщика</h2>
+    
+    <form method="POST" action="{{ url_for('register') }}">
+        <div class="form-group">
+            <label for="username">Логин:</label>
+            <input type="text" id="username" name="username" required 
+                   placeholder="Только латинские буквы, цифры и знаки препинания">
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Пароль:</label>
+            <input type="password" id="password" name="password" required 
+                   placeholder="Не менее 6 символов">
+        </div>
+        
+        <div class="form-group">
+            <label for="confirm_password">Подтвердите пароль:</label>
+            <input type="password" id="confirm_password" name="confirm_password" required>
+        </div>
+        
+        <button type="submit" class="btn">Зарегистрироваться</button>
+    </form>
+    
+    <div class="auth-links">
+        <p>Уже есть аккаунт? <a href="{{ url_for('login') }}">Войдите</a></p>
+    </div>
+</div>
+{% endblock %}

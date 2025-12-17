@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Добавить товар - Склад бытовой техники{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h2>Добавить товар на склад</h2>
+    
+    <form method="POST" action="{{ url_for('add_product') }}">
+        <div class="form-group">
+            <label for="article">Артикул:*</label>
+            <input type="text" id="article" name="article" required 
+                   placeholder="Уникальный артикул товара">
+        </div>
+        
+        <div class="form-group">
+            <label for="name">Название товара:*</label>
+            <input type="text" id="name" name="name" required 
+                   placeholder="Например: Холодильник Samsung RB33">
+        </div>
+        
+        <div class="form-group">
+            <label for="quantity">Количество:*</label>
+            <input type="number" id="quantity" name="quantity" required 
+                   min="0" value="0" placeholder="0">
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Добавить товар</button>
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">Отмена</a>
+        </div>
+    </form>
+    
+    <div class="form-info">
+        <p><small>* - обязательные поля</small></p>
+        <p><strong>Примечание:</strong> Если товар с таким артикулом уже существует, 
+           количество будет увеличено на указанное значение.</p>
+    </div>
+</div>
+{% endblock %}

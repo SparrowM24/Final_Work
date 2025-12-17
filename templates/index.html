@@ -6,28 +6,28 @@
 <div class="page-header">
     <h2>Товары на складе</h2>
     <div class="header-actions">
-        <span class="total-products">Всего товаров: {{ total_products }}</span>
+        <span class="total-products">Всего товаров: {{ pagination.total }}</span>
         <a href="{{ url_for('add_product') }}" class="btn">Добавить товар</a>
     </div>
 </div>
 
 <div class="cart-info">
     <div>
-        <p>Товаров в корзине: <strong id="cart-count">{{ cart_count }}</strong></p>
-        <p class="page-info">Страница <span id="current-page">1</span> из <span id="total-pages">{{ total_pages }}</span></p>
+        <p>Товаров в корзине: <strong>{{ cart_count }}</strong></p>
+        <p class="page-info">Страница {{ pagination.page }} из {{ pagination.pages }}</p>
     </div>
     <a href="{{ url_for('view_cart') }}" class="btn btn-secondary">Перейти в корзину</a>
 </div>
 
-<div id="products-container" class="products-grid">
+<div class="products-grid">
     {% for product in products %}
-    <div class="product-card" data-product-id="{{ product.id }}">
+    <div class="product-card">
         <h3>{{ product.name }}</h3>
         <p><strong>Артикул:</strong> {{ product.article }}</p>
-        <p><strong>Количество:</strong> <span class="product-quantity">{{ product.quantity }}</span> шт.</p>
+        <p><strong>Количество:</strong> {{ product.quantity }} шт.</p>
         
         {% if product.quantity > 0 %}
-        <form class="add-to-cart-form">
+        <form method="POST" action="{{ url_for('add_to_cart') }}">
             <input type="hidden" name="product_id" value="{{ product.id }}">
             <div class="quantity-control">
                 <label for="quantity_{{ product.id }}">Количество:</label>
@@ -40,218 +40,56 @@
         <p class="out-of-stock">Нет в наличии</p>
         {% endif %}
         
-        <form method="POST" action="{{ url_for('delete_product', product_id=product.id) }}" 
-              onsubmit="return confirm('Удалить товар {{ product.name }}?');" class="delete-form">
-            <button type="submit" class="btn btn-danger">Удалить</button>
+        <!-- В шаблоне index.html, рядом с каждым товаром -->
+        <form action="{{ url_for('delete_product', product_id=product.id) }}" method="POST" style="display: inline;">
+            <button type="submit" class="btn btn-danger btn-sm" 
+                    onclick="return confirm('Вы уверены, что хотите удалить этот товар?')">
+                Удалить
+            </button>
         </form>
     </div>
     {% endfor %}
 </div>
 
-<div id="loading-indicator" style="display: none; text-align: center; padding: 20px;">
-    <div class="loader"></div>
-    <p>Загрузка товаров...</p>
+{% if pagination.pages > 1 %}
+<div class="pagination">
+    {% if pagination.has_prev %}
+    <a href="{{ url_for('index', page=pagination.prev_num) }}" class="btn">← Назад</a>
+    {% endif %}
+    
+    <span class="page-info">Страница {{ pagination.page }} из {{ pagination.pages }}</span>
+    
+    {% if pagination.has_next %}
+    <a href="{{ url_for('index', page=pagination.next_num) }}" class="btn">Вперед →</a>
+    {% endif %}
 </div>
-
-<div id="load-more-container" style="text-align: center; margin: 30px 0;">
-    <button id="load-more-btn" class="btn btn-secondary" data-current-page="1">
-        Загрузить еще товары
-    </button>
-</div>
-
-<div id="no-more-products" style="display: none; text-align: center; padding: 20px; color: #666;">
-    <p>Все товары загружены</p>
-</div>
+{% endif %}
 
 <div class="pagination-info">
-    <p>Показано: <span id="shown-products">{{ products|length }}</span> из {{ total_products }} товаров</p>
+    <p>Показано: {{ products|length }} из {{ pagination.total }} товаров</p>
 </div>
+
+<style>
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    margin: 30px 0;
+}
+
+.page-info {
+    font-weight: bold;
+}
+
+.pagination-info {
+    text-align: center;
+    color: #666;
+    margin-top: 20px;
+}
+</style>
 {% endblock %}
 
 {% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    let currentPage = 1;
-    const totalPages = {{ total_pages }};
-    const productsContainer = document.getElementById('products-container');
-    const loadMoreBtn = document.getElementById('load-more-btn');
-    const loadingIndicator = document.getElementById('loading-indicator');
-    const noMoreProducts = document.getElementById('no-more-products');
-    const currentPageSpan = document.getElementById('current-page');
-    const shownProductsSpan = document.getElementById('shown-products');
-    let totalShownProducts = {{ products|length }};
-    
-    // Обновление счетчика показанных товаров
-    function updateShownProductsCount() {
-        shownProductsSpan.textContent = totalShownProducts;
-    }
-    
-    // Функция загрузки следующих товаров
-    function loadMoreProducts() {
-        if (currentPage >= totalPages) {
-            loadMoreBtn.style.display = 'none';
-            noMoreProducts.style.display = 'block';
-            return;
-        }
-        
-        currentPage++;
-        loadMoreBtn.disabled = true;
-        loadingIndicator.style.display = 'block';
-        
-        fetch(`/load_more_products?page=${currentPage}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Добавляем новые товары в контейнер
-                    data.products.forEach(product => {
-                        const productCard = `
-                            <div class="product-card" data-product-id="${product.id}">
-                                <h3>${product.name}</h3>
-                                <p><strong>Артикул:</strong> ${product.article}</p>
-                                <p><strong>Количество:</strong> <span class="product-quantity">${product.quantity}</span> шт.</p>
-                                
-                                ${product.quantity > 0 ? 
-                                    `<form class="add-to-cart-form">
-                                        <input type="hidden" name="product_id" value="${product.id}">
-                                        <div class="quantity-control">
-                                            <label for="quantity_${product.id}">Количество:</label>
-                                            <input type="number" name="quantity" id="quantity_${product.id}" 
-                                                   value="1" min="1" max="${product.quantity}" required>
-                                        </div>
-                                        <button type="submit" class="btn btn-primary">В корзину</button>
-                                    </form>` : 
-                                    `<p class="out-of-stock">Нет в наличии</p>`
-                                }
-                                
-                                <form method="POST" action="/delete_product/${product.id}" 
-                                      onsubmit="return confirm('Удалить товар ${product.name}?');" class="delete-form">
-                                    <button type="submit" class="btn btn-danger">Удалить</button>
-                                </form>
-                            </div>`;
-                        
-                        productsContainer.insertAdjacentHTML('beforeend', productCard);
-                        totalShownProducts++;
-                    });
-                    
-                    // Обновляем счетчики
-                    currentPageSpan.textContent = currentPage;
-                    updateShownProductsCount();
-                    
-                    // Если больше нет товаров, скрываем кнопку
-                    if (!data.has_more) {
-                        loadMoreBtn.style.display = 'none';
-                        noMoreProducts.style.display = 'block';
-                    }
-                    
-                    // Добавляем обработчики событий к новым формам
-                    addEventListenersToNewForms();
-                }
-            })
-            .catch(error => {
-                console.error('Ошибка при загрузке товаров:', error);
-                alert('Ошибка при загрузке товаров. Пожалуйста, попробуйте снова.');
-            })
-            .finally(() => {
-                loadMoreBtn.disabled = false;
-                loadingIndicator.style.display = 'none';
-            });
-    }
-    
-    // Добавление товара в корзину
-    function addToCart(productId, quantity) {
-        const formData = new FormData();
-        formData.append('product_id', productId);
-        formData.append('quantity', quantity);
-        
-        return fetch('/add_to_cart', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Обновляем счетчик корзины
-                document.getElementById('cart-count').textContent = data.cart_total;
-                
-                // Обновляем количество товара на складе в интерфейсе
-                const productCard = document.querySelector(`.product-card[data-product-id="${productId}"]`);
-                if (productCard) {
-                    const quantityElement = productCard.querySelector('.product-quantity');
-                    const inputElement = productCard.querySelector('input[name="quantity"]');
-                    
-                    if (quantityElement && inputElement) {
-                        const newQuantity = parseInt(quantityElement.textContent) - quantity;
-                        quantityElement.textContent = newQuantity;
-                        inputElement.max = newQuantity;
-                        
-                        if (newQuantity <= 0) {
-                            productCard.querySelector('.add-to-cart-form').outerHTML = '<p class="out-of-stock">Нет в наличии</p>';
-                        }
-                    }
-                }
-                
-                return { success: true, message: `Товар "${data.product_name}" добавлен в корзину!` };
-            } else {
-                return { success: false, message: data.error };
-            }
-        })
-        .catch(error => {
-            console.error('Ошибка:', error);
-            return { success: false, message: 'Ошибка при добавлении в корзину' };
-        });
-    }
-    
-    // Добавление обработчиков событий к формам добавления в корзину
-    function addEventListenersToForms() {
-        const forms = document.querySelectorAll('.add-to-cart-form');
-        forms.forEach(form => {
-            form.addEventListener('submit', async function(e) {
-                e.preventDefault();
-                
-                const productId = this.querySelector('input[name="product_id"]').value;
-                const quantity = parseInt(this.querySelector('input[name="quantity"]').value);
-                const maxQuantity = parseInt(this.querySelector('input[name="quantity"]').max);
-                
-                // Проверка максимального количества
-                if (quantity > maxQuantity) {
-                    alert(`Нельзя добавить больше ${maxQuantity} шт.`);
-                    return;
-                }
-                
-                const submitBtn = this.querySelector('button[type="submit"]');
-                const originalText = submitBtn.textContent;
-                submitBtn.textContent = 'Добавляем...';
-                submitBtn.disabled = true;
-                
-                const result = await addToCart(productId, quantity);
-                
-                if (result.success) {
-                    alert(result.message);
-                    // Сбрасываем значение в форме
-                    this.querySelector('input[name="quantity"]').value = 1;
-                } else {
-                    alert(result.message);
-                }
-                
-                submitBtn.textContent = originalText;
-                submitBtn.disabled = false;
-            });
-        });
-    }
-    
-    // Инициализация обработчиков событий
-    addEventListenersToForms();
-    
-    // Обработчик кнопки "Загрузить еще"
-    if (loadMoreBtn) {
-        loadMoreBtn.addEventListener('click', loadMoreProducts);
-    }
-    
-    // Автоматически скрываем кнопку "Загрузить еще", если все товары уже показаны
-    if (currentPage >= totalPages && loadMoreBtn) {
-        loadMoreBtn.style.display = 'none';
-        if (noMoreProducts) noMoreProducts.style.display = 'block';
-    }
-});
-</script>
+{# Убираем весь JavaScript #}
 {% endblock %}

@@ -5,7 +5,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import re
 from functools import wraps
 import math
+import logging
 
+logging.basicConfig(level=logging.DEBUG)
 app = Flask(__name__)
 app.config.from_object(Config)
 db.init_app(app)
@@ -264,22 +266,22 @@ def validate_credentials(username, password):
 @app.route('/')
 @login_required
 def index():
-    # Получаем первые ITEMS_PER_PAGE товаров, отсортированных по ID в обратном порядке (новые первыми)
-    products = Product.query.order_by(Product.id.desc()).limit(app.config['ITEMS_PER_PAGE']).all()
-    total_products = Product.query.count()
+    page = request.args.get('page', 1, type=int)
+    per_page = app.config['ITEMS_PER_PAGE']  # 50 товаров на странице
+    
+    # Пагинация товаров (новые первыми)
+    pagination = Product.query.order_by(Product.id.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    products = pagination.items
     
     # Количество товаров в корзине
     cart_count = sum(session.get('cart', {}).values()) if 'cart' in session else 0
     
-    # Рассчитываем общее количество страниц
-    total_pages = math.ceil(total_products / app.config['ITEMS_PER_PAGE'])
-    
     return render_template('index.html', 
                          products=products,
-                         total_pages=total_pages,
-                         current_page=1,
-                         cart_count=cart_count,
-                         total_products=total_products)
+                         pagination=pagination,
+                         cart_count=cart_count)
 
 # API для загрузки следующих товаров (AJAX)
 @app.route('/load_more_products', methods=['GET'])
@@ -391,28 +393,59 @@ def logout():
     session.clear()
     flash('Вы вышли из системы')
     return redirect(url_for('login'))
-
-# Удаление аккаунта
-@app.route('/delete_account', methods=['GET', 'POST'])
-@login_required
-def delete_account():
-    if request.method == 'POST':
-        user = User.query.get(session['user_id'])
-        
-        if user:
+    if request.method == 'GET':
+        # Просто показываем форму
+        return render_template('delete_account.html')
+    
+    elif request.method == 'POST':
+        try:
+            # Получаем текущего пользователя
+            user = User.query.get(session['user_id'])
+            
+            if not user:
+                flash('Пользователь не найден')
+                return redirect(url_for('index'))
+            
+            # Проверяем подтверждение логина
+            confirm_username = request.form.get('confirm_username', '').strip()
+            
+            if confirm_username != user.username:
+                flash('Введенный логин не совпадает с вашим')
+                return render_template('delete_account.html')
+            
+            # Проверяем, не последний ли это пользователь
             total_users = User.query.count()
             
-            if total_users > 1:
-                session.clear()
-                db.session.delete(user)
-                db.session.commit()
-                flash('Ваш аккаунт успешно удален')
-                return redirect(url_for('login'))
-            else:
+            if total_users <= 1:
                 flash('Нельзя удалить последнего пользователя в системе')
-                return redirect(url_for('index'))
-    
-    return render_template('delete_account.html')
+                return redirect(url_for('profile'))
+            
+            # Если пользователь admin, проверяем есть ли другие админы
+            if user.username == 'admin':
+                other_admins = User.query.filter(
+                    User.username != 'admin',
+                    User.role == 'admin'
+                ).count()
+                if other_admins == 0:
+                    flash('Нельзя удалить последнего администратора')
+                    return redirect(url_for('profile'))
+            
+            # Удаляем пользователя
+            username = user.username
+            session.clear()  # Сначала очищаем сессию
+            db.session.delete(user)
+            db.session.commit()
+            
+            flash(f'Аккаунт {username} успешно удален')
+            return redirect(url_for('login'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Ошибка при удалении аккаунта: {str(e)}')
+            print(f"Ошибка удаления аккаунта: {e}")
+            import traceback
+            traceback.print_exc()
+            return redirect(url_for('profile'))
 
 # Добавление товара
 @app.route('/add_product', methods=['GET', 'POST'])
@@ -452,21 +485,114 @@ def add_product():
     
     return render_template('add_product.html')
 
-# Удаление товара
+# Удаление товара (улучшенная версия с информативными сообщениями)
 @app.route('/delete_product/<int:product_id>', methods=['POST'])
 @login_required
 def delete_product(product_id):
-    product = Product.query.get(product_id)
-    
-    if product:
-        in_orders = OrderItem.query.filter_by(product_id=product_id).first()
+    try:
+        print(f"=== DEBUG: Удаление товара ID: {product_id} ===")
         
-        if in_orders:
-            flash('Нельзя удалить товар, который есть в заказах')
+        product = Product.query.get(product_id)
+        
+        if not product:
+            flash('❌ Товар не найден')
+            return redirect(url_for('index'))
+        
+        # 1. Проверяем, есть ли товар в заказах
+        order_items = OrderItem.query.filter_by(product_id=product_id).all()
+        print(f"Найдено записей в order_item: {len(order_items)}")
+        
+        if order_items:
+            # Собираем информацию о заказах для пользователя
+            orders_info = []
+            paid_orders_count = 0
+            unpaid_orders_count = 0
+            
+            for item in order_items:
+                print(f"  OrderItem ID: {item.id}, Order ID: {item.order_id}")
+                if item.order:
+                    print(f"    Статус заказа: {item.order.status}")
+                    orders_info.append({
+                        'order_id': item.order.id,
+                        'status': item.order.status,
+                        'date': item.order.created_at.strftime('%d.%m.%Y %H:%M'),
+                        'quantity': item.quantity
+                    })
+                    
+                    if item.order.status == 'оплачен':
+                        paid_orders_count += 1
+                    else:
+                        unpaid_orders_count += 1
+            
+            # Проверяем, есть ли оплаченные заказы
+            if paid_orders_count > 0:
+                # Формируем детальное сообщение
+                order_details = ""
+                for info in orders_info:
+                    if info['status'] == 'оплачен':
+                        order_details += f"№{info['order_id']} ({info['date']}, {info['quantity']} шт.), "
+                
+                if order_details:
+                    order_details = order_details[:-2]  # Убираем последнюю запятую
+                
+                flash(f'❌ Нельзя удалить товар "{product.name}"!<br>'
+                      f'Товар находится в <strong>оплаченных заказах</strong>: {order_details}.<br>'
+                      f'Всего найдено в {len(order_items)} заказах: {paid_orders_count} оплаченных, {unpaid_orders_count} неоплаченных.')
+                return redirect(url_for('index'))
+            
+            # Если есть только неоплаченные заказы - можно удалить, но с предупреждением
+            flash(f'⚠️ Внимание! Товар "{product.name}" находится в {len(order_items)} неоплаченных заказах.<br>'
+                  f'Все связанные заказы будут автоматически удалены.', 'warning')
+            
+            # 2. Удаляем ВСЕ связанные OrderItem записи
+            print("Удаляем связанные OrderItem записи...")
+            deleted_orders = set()  # Для отслеживания удаленных заказов
+            
+            for item in order_items:
+                # Удаляем OrderItem
+                db.session.delete(item)
+                print(f"  Удален OrderItem ID: {item.id}")
+                deleted_orders.add(item.order_id)
+            
+            # 3. Проверяем, остались ли пустые заказы
+            for order_id in deleted_orders:
+                # Проверяем, есть ли другие товары в этом заказе
+                other_items = OrderItem.query.filter_by(order_id=order_id).all()
+                
+                # Если заказ пустой - удаляем и сам заказ
+                if not other_items:
+                    order = Order.query.get(order_id)
+                    if order:
+                        db.session.delete(order)
+                        print(f"  Удален пустой Order ID: {order.id}")
+                        flash(f'🗑️ Удален пустой заказ №{order.id}', 'info')
+        
+        # 4. Удаляем товар из корзины всех пользователей
+        if 'cart' in session and str(product_id) in session['cart']:
+            session['cart'].pop(str(product_id))
+            session.modified = True
+            print(f"Удален из корзины")
+        
+        # 5. Удаляем сам товар
+        print(f"Удаляем товар: {product.name}")
+        db.session.delete(product)
+        
+        # 6. Фиксируем изменения
+        db.session.commit()
+        
+        if order_items:
+            flash(f'✅ Товар "{product.name}" удален вместе с {len(order_items)} связанными заказами')
         else:
-            db.session.delete(product)
-            db.session.commit()
-            flash(f'Товар "{product.name}" удален')
+            flash(f'✅ Товар "{product.name}" успешно удален')
+        
+        print("Удаление завершено успешно!")
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'❌ Ошибка при удалении товара: {str(e)}')
+        print(f"Ошибка удаления товара: {e}")
+        import traceback
+        traceback.print_exc()
     
     return redirect(url_for('index'))
 
@@ -501,17 +627,21 @@ def add_to_cart():
         product_id = int(product_id)
         quantity = int(quantity)
     except (ValueError, TypeError):
-        return jsonify({'error': 'Неверные данные'}), 400
+        flash('Неверные данные')
+        return redirect(url_for('index'))
     
     product = Product.query.get(product_id)
     if not product:
-        return jsonify({'error': 'Товар не найден'}), 404
+        flash('Товар не найден')
+        return redirect(url_for('index'))
     
     if quantity <= 0:
-        return jsonify({'error': 'Количество должно быть положительным'}), 400
+        flash('Количество должно быть положительным')
+        return redirect(url_for('index'))
     
     if quantity > product.quantity:
-        return jsonify({'error': f'Недостаточно товара на складе. Доступно: {product.quantity}'}), 400
+        flash(f'Недостаточно товара на складе. Доступно: {product.quantity}')
+        return redirect(url_for('index'))
     
     if 'cart' not in session:
         session['cart'] = {}
@@ -520,20 +650,15 @@ def add_to_cart():
     current_quantity = cart.get(str(product_id), 0)
     
     if current_quantity + quantity > product.quantity:
-        return jsonify({'error': f'Нельзя добавить больше, чем есть на складе. Уже в корзине: {current_quantity}'}), 400
+        flash(f'Нельзя добавить больше, чем есть на складе. Уже в корзине: {current_quantity}')
+        return redirect(url_for('index'))
     
     cart[str(product_id)] = current_quantity + quantity
     session['cart'] = cart
     session.modified = True
     
-    cart_total = sum(cart.values())
-    
-    return jsonify({
-        'success': True, 
-        'cart_total': cart_total,
-        'product_name': product.name,
-        'new_quantity': cart[str(product_id)]
-    })
+    flash(f'Товар "{product.name}" добавлен в корзину!')
+    return redirect(url_for('index'))  # Перезагрузка страницы
 
 # Удаление товара из корзины
 @app.route('/remove_from_cart/<product_id>', methods=['POST'])
@@ -716,7 +841,115 @@ def check_db():
     </body>
     </html>
     """
+# Редактирование аккаунта
+@app.route('/edit_account', methods=['POST'])
+@login_required
+def edit_account():
+    try:
+        user = User.query.get(session['user_id'])
+        
+        if not user:
+            flash('Пользователь не найден', 'error')
+            return redirect(url_for('profile'))
+        
+        new_username = request.form.get('username', '').strip()
+        current_password = request.form.get('current_password', '').strip()
+        new_password = request.form.get('new_password', '').strip()
+        
+        # Проверяем текущий пароль
+        if not user.check_password(current_password):
+            flash('Неверный текущий пароль', 'error')
+            return redirect(url_for('profile'))
+        
+        # Проверяем логин
+        if not new_username:
+            flash('Логин не может быть пустым', 'error')
+            return redirect(url_for('profile'))
+        
+        # Проверяем, не занят ли логин другим пользователем
+        existing_user = User.query.filter(
+            User.username == new_username,
+            User.id != user.id
+        ).first()
+        
+        if existing_user:
+            flash('Этот логин уже занят другим пользователем', 'error')
+            return redirect(url_for('profile'))
+        
+        # Обновляем логин
+        user.username = new_username
+        
+        # Обновляем пароль, если он указан
+        if new_password:
+            # Проверяем длину пароля
+            if len(new_password) < 6:
+                flash('Пароль должен быть не менее 6 символов', 'error')
+                return redirect(url_for('profile'))
+            
+            user.set_password(new_password)
+        
+        db.session.commit()
+        
+        # Обновляем данные в сессии
+        session['username'] = user.username
+        
+        flash('Данные аккаунта успешно обновлены!', 'success')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка при обновлении данных: {str(e)}', 'error')
+    
+    return redirect(url_for('profile'))
 
+# Удаление аккаунта
+@app.route('/delete_account', methods=['POST'])
+@login_required
+def delete_account():
+    try:
+        user = User.query.get(session['user_id'])
+        
+        if not user:
+            flash('Пользователь не найден', 'error')
+            return redirect(url_for('index'))
+        
+        confirm_username = request.form.get('confirm_username', '').strip()
+        
+        if confirm_username != user.username:
+            flash('Введенный логин не совпадает с вашим', 'error')
+            return redirect(url_for('profile'))
+        
+        # Проверяем, не последний ли это пользователь
+        total_users = User.query.count()
+        
+        if total_users <= 1:
+            flash('Нельзя удалить последнего пользователя в системе', 'error')
+            return redirect(url_for('profile'))
+        
+        # Если пользователь admin, проверяем есть ли другие админы
+        if user.username == 'admin':
+            other_admins = User.query.filter(
+                User.username != 'admin',
+                User.role == 'admin'
+            ).count()
+            if other_admins == 0:
+                flash('Нельзя удалить последнего администратора', 'error')
+                return redirect(url_for('profile'))
+        
+        username = user.username
+        
+        # Удаляем пользователя
+        session.clear()
+        db.session.delete(user)
+        db.session.commit()
+        
+        flash(f'Аккаунт "{username}" успешно удален', 'success')
+        return redirect(url_for('login'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка при удалении аккаунта: {str(e)}', 'error')
+        return redirect(url_for('profile'))
+    
 # Маршрут для принудительной инициализации БД
 @app.route('/init-db')
 def init_db_route():
